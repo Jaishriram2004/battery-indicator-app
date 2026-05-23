@@ -2,8 +2,11 @@ package com.example.batteryindicator;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -34,11 +37,77 @@ public class MainActivity extends AppCompatActivity {
         int savedLow = prefs.getInt("LOW", 20);
         int savedHigh = prefs.getInt("HIGH", 80);
 
+        boolean serviceEnabled =
+                prefs.getBoolean(
+                        "SERVICE_ENABLED",
+                        true
+                );
+
         lowBattery.setText(String.valueOf(savedLow));
         highBattery.setText(String.valueOf(savedHigh));
 
+        setButton.setText(
+                serviceEnabled
+                        ? "UNSET"
+                        : "SET"
+        );
+
+        PowerManager powerManager =
+                (PowerManager)
+                        getSystemService(
+                                POWER_SERVICE
+                        );
+
+        if (!powerManager
+                .isIgnoringBatteryOptimizations(
+                        getPackageName()
+                )) {
+
+            Intent intent =
+                    new Intent(
+                            Settings
+                                    .ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                    );
+
+            intent.setData(
+                    Uri.parse(
+                            "package:" + getPackageName()
+                    )
+            );
+
+            startActivity(intent);
+        }
+
         setButton.setOnClickListener(v -> {
 
+            if (setButton.getText().toString()
+                    .equals("UNSET")) {
+
+                Intent stopIntent =
+                        new Intent(
+                                this,
+                                BatteryService.class
+                        );
+
+                stopService(stopIntent);
+
+                prefs.edit()
+                        .putBoolean(
+                                "SERVICE_ENABLED",
+                                false
+                        )
+                        .apply();
+
+                setButton.setText("SET");
+
+                Toast.makeText(
+                        this,
+                        "Battery alerts disabled",
+                        Toast.LENGTH_SHORT
+                ).show();
+
+                return;
+            }
             String low = lowBattery.getText().toString();
             String high = highBattery.getText().toString();
 
@@ -56,6 +125,28 @@ public class MainActivity extends AppCompatActivity {
             int lowValue = Integer.parseInt(low);
             int highValue = Integer.parseInt(high);
 
+            if (lowValue >= highValue) {
+
+                Toast.makeText(
+                        this,
+                        "Low battery must be less than High battery",
+                        Toast.LENGTH_LONG
+                ).show();
+
+                return;
+            }
+
+            if (lowValue < 1 || highValue > 100) {
+
+                Toast.makeText(
+                        this,
+                        "Values must be between 1 and 100",
+                        Toast.LENGTH_SHORT
+                ).show();
+
+                return;
+            }
+
             // SAVE VALUES
             SharedPreferences.Editor editor =
                     prefs.edit();
@@ -64,6 +155,13 @@ public class MainActivity extends AppCompatActivity {
             editor.putInt("HIGH", highValue);
 
             editor.apply();
+
+            prefs.edit()
+                    .putBoolean(
+                            "SERVICE_ENABLED",
+                            true
+                    )
+                    .apply();
 
             Intent serviceIntent =
                     new Intent(this, BatteryService.class);
@@ -80,6 +178,8 @@ public class MainActivity extends AppCompatActivity {
 
                 startService(serviceIntent);
             }
+
+            setButton.setText("UNSET");
 
             Toast.makeText(
                     this,
